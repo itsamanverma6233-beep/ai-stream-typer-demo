@@ -109,6 +109,8 @@
     const flushBtn = document.getElementById("flushBtn");
 
     let typer = null;
+    let pendingTimeouts = [];
+    let pendingChunks = [];
 
     const sampleChunks = [
       "Here is a quick summary: ",
@@ -119,13 +121,17 @@
     ];
 
     sendBtn.addEventListener("click", () => {
+      // Clear any ongoing stream
+      pendingTimeouts.forEach(clearTimeout);
+      pendingTimeouts = [];
+
       chat.innerHTML = '<span id="text"></span><span class="cursor"></span>';
       const textSpan = document.getElementById("text");
 
       typer = new StreamTyper({
-        minDelay: 12,
-        maxDelay: 28,
-        punctuationPause: 80,
+        minDelay: 15,
+        maxDelay: 35,
+        punctuationPause: 100,
         onText: (text) => {
           textSpan.textContent = text;
         },
@@ -135,17 +141,43 @@
         }
       });
 
-      let delay = 0;
-      sampleChunks.forEach((chunk) => {
-        delay += Math.floor(Math.random() * 250) + 100;
-        setTimeout(() => typer.feed(chunk), delay);
-      });
+      pendingChunks = [...sampleChunks];
 
-      setTimeout(() => typer.end(), delay + 50);
+      let delay = 0;
+      sampleChunks.forEach((chunk, index) => {
+        delay += Math.floor(Math.random() * 250) + 150;
+        const tid = setTimeout(() => {
+          // Remove this chunk from pending and feed into typer
+          pendingChunks.shift();
+          typer.feed(chunk);
+          if (index === sampleChunks.length - 1) {
+            typer.end();
+          }
+        }, delay);
+        pendingTimeouts.push(tid);
+      });
     });
 
     flushBtn.addEventListener("click", () => {
-      if (typer) typer.flush();
+      if (!typer) return;
+
+      // 1. Cancel remaining simulated network chunk delays
+      pendingTimeouts.forEach(clearTimeout);
+      pendingTimeouts = [];
+
+      // 2. Feed all remaining pending chunks into typer immediately
+      if (pendingChunks.length > 0) {
+        typer.feed(pendingChunks.join(""));
+        pendingChunks = [];
+      }
+
+      // 3. Signal stream end and flush all buffered characters instantly
+      typer.end();
+      typer.flush();
+
+      // 4. Remove cursor
+      const cursor = document.querySelector(".cursor");
+      if (cursor) cursor.remove();
     });
   </script>
 </body>
